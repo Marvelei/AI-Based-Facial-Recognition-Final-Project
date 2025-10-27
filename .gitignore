@@ -1,0 +1,10 @@
+# Virtual Environment
+venv/
+.venv/
+# DeepFace cache and large models
+*.pkl
+# Python compiled files
+__pycache__/
+*.pyc
+# Operating System files
+.DS_Store
