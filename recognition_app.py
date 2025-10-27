@@ -1,5 +1,5 @@
-## recognition_app.py
-# FINAL VERSION: Advanced DeepFace Recognition System - Fully Automated & Robust
+# recognition_app.py
+# FINAL VERSION: Advanced DeepFace Recognition System - Fully Automated & Stable
 
 import cv2
 import json
@@ -18,8 +18,8 @@ parser.add_argument("--img_a", default=None, help="Path to test image A (Optiona
 parser.add_argument("--img_b", default=None, help="Path to test image B (Optional for 1:1 Verification)")
 parser.add_argument("--db", default="facial_db", help="Path to face database for Recognition")
 parser.add_argument("--model", default="ArcFace", help="Model to use (VGG-Face, Facenet, ArcFace, etc.)")
-# CHANGE HERE: Set default to mediapipe for improved occlusion handling
-parser.add_argument("--detector", default="mediapipe", help="Face detector (opencv, mtcnn, mediapipe, retinaface)")
+# Detector reverted to stable/reliable 'retinaface' to avoid dependency conflicts
+parser.add_argument("--detector", default="retinaface", help="Face detector (opencv, mtcnn, mediapipe, retinaface)")
 parser.add_argument("--metric", default="euclidean_l2", help="Distance metric (cosine, euclidean, euclidean_l2)")
 parser.add_argument("--show", action="store_true", help="Show face extraction window for the first image processed")
 
@@ -35,7 +35,6 @@ def check_file_exists(path, label):
     return True
 
 check_file_exists(args.db, "Database") 
-
 
 # ---------------------------
 # 2. CORE LOGGING
@@ -59,8 +58,8 @@ if args.img_a and args.img_b:
             model_name=args.model,
             distance_metric=args.metric,
             detector_backend=args.detector,
-            anti_spoofing=True,
-            enforce_detection=False # ADDED: Allow verification on blurry/masked faces
+            anti_spoofing=True, 
+            enforce_detection=False 
         )
 
         verified = result_verify['verified']
@@ -111,7 +110,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 model_name=args.model,
                 detector_backend=args.detector,
                 anti_spoofing=True,         
-                enforce_detection=False     # ADDED: Essential for masked/blurry faces
+                enforce_detection=False     
             )
 
             if dfs and isinstance(dfs, list):
@@ -139,7 +138,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 actions=['age', 'gender', 'emotion', 'race'],
                 detector_backend=args.detector,
                 anti_spoofing=True,         
-                enforce_detection=False     # ADDED: Essential for masked/blurry faces
+                enforce_detection=False     
             )
 
             if analysis_results and isinstance(analysis_results, list):
@@ -172,7 +171,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 model_name=args.model,
                 detector_backend=args.detector,
                 anti_spoofing=True,         
-                enforce_detection=False     # ADDED: Essential for masked/blurry faces
+                enforce_detection=False     
             )
             
             if embeddings:
