@@ -1,5 +1,5 @@
-# recognition_app.py
-# FINAL VERSION: Advanced DeepFace Recognition System - Fully Automated Batch Processor
+## recognition_app.py
+# FINAL VERSION: Advanced DeepFace Recognition System - Fully Automated & Robust
 
 import cv2
 import json
@@ -14,12 +14,12 @@ import numpy as np
 # ---------------------------
 parser = argparse.ArgumentParser(description="Advanced DeepFace Recognition System")
 
-# Note: img_a and img_b now default to None and are used ONLY for the Verification section.
 parser.add_argument("--img_a", default=None, help="Path to test image A (Optional for 1:1 Verification)")
 parser.add_argument("--img_b", default=None, help="Path to test image B (Optional for 1:1 Verification)")
 parser.add_argument("--db", default="facial_db", help="Path to face database for Recognition")
 parser.add_argument("--model", default="ArcFace", help="Model to use (VGG-Face, Facenet, ArcFace, etc.)")
-parser.add_argument("--detector", default="retinaface", help="Face detector (opencv, mtcnn, mediapipe, retinaface)")
+# CHANGE HERE: Set default to mediapipe for improved occlusion handling
+parser.add_argument("--detector", default="mediapipe", help="Face detector (opencv, mtcnn, mediapipe, retinaface)")
 parser.add_argument("--metric", default="euclidean_l2", help="Distance metric (cosine, euclidean, euclidean_l2)")
 parser.add_argument("--show", action="store_true", help="Show face extraction window for the first image processed")
 
@@ -34,12 +34,11 @@ def check_file_exists(path, label):
         sys.exit(1)
     return True
 
-# ONLY check the database path, as the images are optional inputs for the loop
 check_file_exists(args.db, "Database") 
 
 
 # ---------------------------
-# 2. MODEL BUILDING (Logging)
+# 2. CORE LOGGING
 # ---------------------------
 print(f"🚀 Using DeepFace with model: {args.model}")
 print(f"🚀 Using face detector: {args.detector}")
@@ -51,7 +50,6 @@ print(f"🚀 Using face detector: {args.detector}")
 print(f"\n--- 1. FACE VERIFICATION (1:1) ---")
 if args.img_a and args.img_b:
     try:
-        # Check files exist before running verification
         check_file_exists(args.img_a, "Image A for Verification")
         check_file_exists(args.img_b, "Image B for Verification")
         
@@ -60,7 +58,9 @@ if args.img_a and args.img_b:
             img2_path=args.img_b,
             model_name=args.model,
             distance_metric=args.metric,
-            detector_backend=args.detector
+            detector_backend=args.detector,
+            anti_spoofing=True,
+            enforce_detection=False # ADDED: Allow verification on blurry/masked faces
         )
 
         verified = result_verify['verified']
@@ -86,18 +86,16 @@ print(f"==================================================")
 def numpy_encoder(obj):
     if isinstance(obj, np.ndarray):
         return obj.tolist()
-    if isinstance(obj, (np.float32, np.float64)):
-        return float(obj)
-    return json.JSONEncoder.default(self, obj) # Fallback to default encoder for other types
+    if isinstance(obj, (np.float32, np.float64, np.integer)):
+        return obj.item()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 # Iterate over all files in the test folder
 for filename in os.listdir(TEST_FOLDER_PATH):
-    # Only process common image files
     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         
         image_path = os.path.join(TEST_FOLDER_PATH, filename)
         
-        # Skip processing if file is corrupted/unreadable (prevents crash)
         if not os.path.isfile(image_path):
              print(f"  ⚠️ Skipping {filename}: Not a valid file.")
              continue
@@ -111,15 +109,26 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 img_path=image_path,
                 db_path=args.db,
                 model_name=args.model,
-                detector_backend=args.detector
+                detector_backend=args.detector,
+                anti_spoofing=True,         
+                enforce_detection=False     # ADDED: Essential for masked/blurry faces
             )
 
-            if dfs and isinstance(dfs, list) and not dfs[0].empty:
-                match_identity = dfs[0]['identity'].iloc[0].split(os.sep)[-2]
-                print(f"  🎉 MATCH FOUND: {match_identity}")
-                print(dfs[0][['identity', 'distance']].head(1).to_string(index=False)) 
-            else:
-                print("  🤷‍♂️ No match found in database.")
+            if dfs and isinstance(dfs, list):
+                if not dfs[0].empty:
+                    print(f"  🔍 Found {len(dfs)} face(s) for recognition.")
+                    
+                    for i, df_result in enumerate(dfs):
+                        if not df_result.empty:
+                            match_identity = df_result['identity'].iloc[0].split(os.sep)[-2]
+                            distance = df_result['distance'].iloc[0]
+                            
+                            print(f"    - Face {i+1} Match: **{match_identity}** (Distance: {distance:.4f})")
+                        else:
+                            print(f"    - Face {i+1} Match: **No match found**.")
+                else:
+                    print("  🤷‍♂️ No face detected for recognition or the result set was empty.")
+            
         except Exception as e:
             print(f"  ❌ Recognition Error: {e}")
 
@@ -128,72 +137,86 @@ for filename in os.listdir(TEST_FOLDER_PATH):
             analysis_results = DeepFace.analyze(
                 img_path=image_path,
                 actions=['age', 'gender', 'emotion', 'race'],
-                detector_backend=args.detector
+                detector_backend=args.detector,
+                anti_spoofing=True,         
+                enforce_detection=False     # ADDED: Essential for masked/blurry faces
             )
 
-            result = analysis_results[0]
-            print(f"  Age: {result['age']}, Gender: {result['dominant_gender']}")
-            print(f"  Emotion: {result['dominant_emotion']}, Race: {result['dominant_race']}")
+            if analysis_results and isinstance(analysis_results, list):
+                print(f"  🔬 Found {len(analysis_results)} face(s) for analysis.")
+                
+                for i, result in enumerate(analysis_results):
+                    print(f"    - Face {i+1} Analysis:")
+                    print(f"      Age: {result['age']}, Gender: {result['dominant_gender']}")
+                    print(f"      Emotion: {result['dominant_emotion']}, Race: {result['dominant_race']}")
+                    
+                    os.makedirs("outputs/analysis", exist_ok=True)
+                    base_filename = os.path.splitext(filename)[0]
+                    output_filename = f"{base_filename}_face{i+1}_analysis.json"
+                    
+                    serializable_result = result.copy()
+                    for key, value in serializable_result.items():
+                        if isinstance(value, np.ndarray):
+                            serializable_result[key] = value.tolist()
 
-            # Save results 
-            os.makedirs("outputs/analysis", exist_ok=True)
-            output_filename = os.path.splitext(filename)[0] + "_analysis.json"
-            with open(os.path.join("outputs/analysis", output_filename), "w") as f:
-                json.dump(result, f, indent=4, default=numpy_encoder)
+                    with open(os.path.join("outputs/analysis", output_filename), "w") as f:
+                        json.dump(serializable_result, f, indent=4, default=numpy_encoder) 
             
         except Exception as e:
             print(f"  ❌ Analysis Error: {e}")
 
-        # --- 4.3. FACE EMBEDDING (FIXED tolist ERROR) ---
+        # --- 4.3. FACE EMBEDDING (Vector Generation) ---
         try:
             embeddings = DeepFace.represent(
                 img_path=image_path,
                 model_name=args.model,
                 detector_backend=args.detector,
+                anti_spoofing=True,         
+                enforce_detection=False     # ADDED: Essential for masked/blurry faces
             )
             
-            # Extract the embedding list/array directly
-            embedding_vector = embeddings[0]['embedding']
-            
-            # Prepare serializable data
-            serializable_data = embeddings[0].copy()
-            
-            # **SAFETY CHECK:** Convert to list ONLY IF it is a NumPy array (np.ndarray)
-            if isinstance(embedding_vector, np.ndarray):
-                serializable_data['embedding'] = embedding_vector.tolist()
+            if embeddings:
+                embedding_vector = embeddings[0]['embedding']
+                
+                serializable_data = embeddings[0].copy()
+                
+                if isinstance(embedding_vector, np.ndarray):
+                    serializable_data['embedding'] = embedding_vector.tolist()
+                else:
+                    serializable_data['embedding'] = embedding_vector
+
+                print(f"  Embedding vector length (First Face): {len(serializable_data['embedding'])}")
+
+                os.makedirs("outputs/embeddings", exist_ok=True)
+                output_filename = os.path.splitext(filename)[0] + "_embedding.json"
+                with open(os.path.join("outputs/embeddings", output_filename), "w") as f:
+                    json.dump(serializable_data, f, indent=4)
+                print(f"  📁 Saved embedding to outputs/embeddings/{output_filename}")
             else:
-                # If it's already a list (which DeepFace sometimes returns), assign it directly
-                serializable_data['embedding'] = embedding_vector
-
-            print(f"  Embedding vector length: {len(serializable_data['embedding'])}")
-
-            # Save a serializable copy
-            os.makedirs("outputs/embeddings", exist_ok=True)
-            output_filename = os.path.splitext(filename)[0] + "_embedding.json"
-            with open(os.path.join("outputs/embeddings", output_filename), "w") as f:
-                json.dump(serializable_data, f, indent=4)
-            print(f"  📁 Saved embedding to outputs/embeddings/{output_filename}")
+                 print("  ⚠️ No face found to generate embedding.")
 
         except Exception as e:
             print(f"  ❌ Embedding Error: {e}")
 
+
 # ---------------------------
-# 5. FACE EXTRACTION & VISUALIZATION (Runs ONLY on the first image processed, or args.img_a)
+# 5. FACE EXTRACTION & VISUALIZATION
 # ---------------------------
 print(f"\n--- 3. FACE EXTRACTION & VISUALIZATION ---")
-# This section now runs on the first image in the test_images folder, 
-# or the image specified by --img_a, if provided.
-img_to_show = args.img_a if args.img_a else os.path.join(TEST_FOLDER_PATH, os.listdir(TEST_FOLDER_PATH)[0])
+img_list = [f for f in os.listdir(TEST_FOLDER_PATH) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+img_to_show = args.img_a if args.img_a and os.path.isfile(args.img_a) else \
+              (os.path.join(TEST_FOLDER_PATH, img_list[0]) if img_list else None)
 
-if args.show and os.path.isfile(img_to_show):
+if args.show and img_to_show and os.path.isfile(img_to_show):
     try:
         faces = DeepFace.extract_faces(
             img_path=img_to_show,
             detector_backend=args.detector,
             align=True,
+            anti_spoofing=True
         )
 
-        print(f"Detected {len(faces)} face(s) in {img_to_show}.")
+        print(f"Detected {len(faces)} face(s) in {img_to_show} for visualization.")
 
         img = cv2.imread(os.path.abspath(img_to_show))
         
@@ -212,6 +235,6 @@ if args.show and os.path.isfile(img_to_show):
     except Exception as e:
         print(f"Extraction/Visualization Error: {e}")
 else:
-    print("ℹ️ Visualization skipped: Pass --show argument to enable the display.")
+    print("ℹ️ Visualization skipped: Pass --show argument to enable the display, or ensure test_images folder has files.")
 
 print("\n✅ All tasks completed successfully!")
