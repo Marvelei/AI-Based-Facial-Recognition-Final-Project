@@ -25,6 +25,9 @@ parser.add_argument("--show", action="store_true", help="Show face extraction wi
 
 args = parser.parse_args()
 
+# --- NEW: DEFINE ALL DATABASE PATHS ---
+DB_PATHS = ["baseline_db", "masked_db"] # Use these new paths
+
 # --- VALIDATION CHECK (Only validating the mandatory database path) ---
 def check_file_exists(path, label):
     if not os.path.exists(path):
@@ -34,7 +37,10 @@ def check_file_exists(path, label):
         sys.exit(1)
     return True
 
-check_file_exists(args.db, "Database") 
+# Validate the NEW database paths
+check_file_exists(DB_PATHS[0], "Baseline Database")
+check_file_exists(DB_PATHS[1], "Masked Database")
+
 
 # ---------------------------
 # 2. CORE LOGGING
@@ -71,7 +77,7 @@ else:
     print("ℹ️ Verification skipped: Use --img_a and --img_b arguments to run 1:1 match.")
 
 # =======================================================
-# 4. BATCH PROCESSING LOOP (Including Visualization)
+# 4. BATCH PROCESSING LOOP
 # =======================================================
 
 TEST_FOLDER_PATH = "test_images"
@@ -107,7 +113,6 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         
         # --- 4.1. FACE EXTRACTION (Required for both Viz and Processing) ---
         try:
-            # Extract faces first, as this result will be used for visualization
             faces = DeepFace.extract_faces(
                 img_path=image_path,
                 detector_backend=args.detector,
@@ -136,7 +141,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                         # Draw green rectangle (0, 255, 0)
                         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
                         
-                        # ADDED: Draw Face Number Label
+                        # Draw Face Number Label
                         label = f"Face {i+1}"
                         cv2.putText(img, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                     
@@ -156,30 +161,48 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         
         # --- 4.2. FACE RECOGNITION (Find Identity) ---
         try:
-            dfs = DeepFace.find(
-                img_path=image_path,
-                db_path=args.db,
-                model_name=args.model,
-                detector_backend=args.detector,
-                anti_spoofing=True,         
-                enforce_detection=False     
-            )
+            recognition_results = []
+            
+            for db_path in DB_PATHS:
+                # Run find function against ONE database path at a time
+                dfs_single = DeepFace.find(
+                    img_path=image_path,
+                    db_path=db_path, 
+                    model_name=args.model,
+                    detector_backend=args.detector,
+                    anti_spoofing=True,         
+                    enforce_detection=False     
+                )
+                if dfs_single and isinstance(dfs_single, list):
+                    recognition_results.extend(dfs_single)
 
-            if dfs and isinstance(dfs, list):
-                if not dfs[0].empty:
-                    print(f"  🔍 Found {len(dfs)} face(s) for recognition.")
+            # Process the combined results
+            if recognition_results and not recognition_results[0].empty:
+                # The count of faces analyzed is len(faces) from the extraction step
+                true_face_count = len(faces)
+                print(f"  🔍 Detected {true_face_count} unique face(s). Logging {len(recognition_results)} search results.")
+                
+                # Report results corresponding to the indexed faces
+                for i in range(true_face_count):
+                    # Find results specific to the i-th face from both searches
                     
-                    for i, df_result in enumerate(dfs):
+                    # We assume DeepFace returns detection results ordered by face position
+                    if i < len(recognition_results): 
+                        df_result = recognition_results[i]
+                        
                         if not df_result.empty:
                             match_identity = df_result['identity'].iloc[0].split(os.sep)[-2]
                             distance = df_result['distance'].iloc[0]
                             
-                            # MODIFIED PRINT: Show the face number that matches the visualization
-                            print(f"    - Face {i+1} Match: **{match_identity}** (Distance: {distance:.4f})")
+                            db_source = 'Masked' if 'masked_db' in df_result['identity'].iloc[0] else 'Baseline'
+                            
+                            print(f"    - Face {i+1} Match: **{match_identity}** (Source: {db_source}, Distance: {distance:.4f})")
                         else:
                             print(f"    - Face {i+1} Match: **No match found**.")
-                else:
-                    print("  🤷‍♂️ No face detected for recognition or the result set was empty.")
+                    else:
+                        print(f"    - Face {i+1} Match: **Skipped (Detection Index Error)**.") # Safety check
+            else:
+                print("  🤷‍♂️ No face detected for recognition or the result set was empty.")
             
         except Exception as e:
             print(f"  ❌ Recognition Error: {e}")
@@ -188,7 +211,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         try:
             analysis_results = DeepFace.analyze(
                 img_path=image_path,
-                actions=['age', 'gender', 'emotion', 'race'],
+                actions=['age', 'emotion', 'race'], 
                 detector_backend=args.detector,
                 anti_spoofing=True,         
                 enforce_detection=False     
@@ -198,9 +221,8 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 print(f"  🔬 Found {len(analysis_results)} face(s) for analysis.")
                 
                 for i, result in enumerate(analysis_results):
-                    # MODIFIED PRINT: Show the face number that matches the visualization
                     print(f"    - Face {i+1} Analysis:")
-                    print(f"      Age: {result['age']}, Gender: {result['dominant_gender']}")
+                    print(f"      Age: {result['age']}, Gender: // Skipped")
                     print(f"      Emotion: {result['dominant_emotion']}, Race: {result['dominant_race']}")
                     
                     os.makedirs("outputs/analysis", exist_ok=True)
@@ -208,6 +230,13 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                     output_filename = f"{base_filename}_face{i+1}_analysis.json"
                     
                     serializable_result = result.copy()
+                    
+                    # Remove gender data before JSON serialization
+                    if 'gender' in serializable_result:
+                         del serializable_result['gender']
+                    if 'dominant_gender' in serializable_result:
+                         del serializable_result['dominant_gender']
+
                     for key, value in serializable_result.items():
                         if isinstance(value, np.ndarray):
                             serializable_result[key] = value.tolist()
@@ -229,17 +258,17 @@ for filename in os.listdir(TEST_FOLDER_PATH):
             )
             
             if embeddings:
-                # MODIFIED: Print embedding length for ALL faces if available, but only save the first one
-                print(f"  Vector embeddings generated for {len(embeddings)} face(s).")
-                
                 # Save the first embedding (index 0)
                 embedding_vector = embeddings[0]['embedding']
+                
                 serializable_data = embeddings[0].copy()
                 
                 if isinstance(embedding_vector, np.ndarray):
                     serializable_data['embedding'] = embedding_vector.tolist()
                 else:
                     serializable_data['embedding'] = embedding_vector
+
+                print(f"  Embedding vector length (First Face): {len(serializable_data['embedding'])}")
 
                 os.makedirs("outputs/embeddings", exist_ok=True)
                 output_filename = os.path.splitext(filename)[0] + "_embedding_face1.json"
