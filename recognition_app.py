@@ -18,7 +18,7 @@ parser.add_argument("--img_a", default=None, help="Path to test image A (Optiona
 parser.add_argument("--img_b", default=None, help="Path to test image B (Optional for 1:1 Verification)")
 parser.add_argument("--db", default="facial_db", help="Path to face database for Recognition")
 parser.add_argument("--model", default="ArcFace", help="Model to use (VGG-Face, Facenet, ArcFace, etc.)")
-# Detector reverted to stable/reliable 'retinaface' to avoid dependency conflicts
+# Detector set to stable 'retinaface' for high accuracy and stability
 parser.add_argument("--detector", default="retinaface", help="Face detector (opencv, mtcnn, mediapipe, retinaface)")
 parser.add_argument("--metric", default="euclidean_l2", help="Distance metric (cosine, euclidean, euclidean_l2)")
 parser.add_argument("--show", action="store_true", help="Show face extraction window for the first image processed")
@@ -71,7 +71,7 @@ else:
     print("ℹ️ Verification skipped: Use --img_a and --img_b arguments to run 1:1 match.")
 
 # =======================================================
-# 4. BATCH PROCESSING LOOP
+# 4. BATCH PROCESSING LOOP (Including Visualization)
 # =======================================================
 
 TEST_FOLDER_PATH = "test_images"
@@ -89,6 +89,9 @@ def numpy_encoder(obj):
         return obj.item()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
+# Initialize outside the loop
+cv2.namedWindow('Detected Faces') 
+
 # Iterate over all files in the test folder
 for filename in os.listdir(TEST_FOLDER_PATH):
     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -102,7 +105,56 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         processed_count += 1
         print(f"\n>>> PROCESSING IMAGE {processed_count}: {image_path} <<<")
         
-        # --- 4.1. FACE RECOGNITION (Find Identity) ---
+        # --- 4.1. FACE EXTRACTION (Required for both Viz and Processing) ---
+        try:
+            # Extract faces first, as this result will be used for visualization
+            faces = DeepFace.extract_faces(
+                img_path=image_path,
+                detector_backend=args.detector,
+                align=True,
+                anti_spoofing=True,
+                enforce_detection=False
+            )
+            print(f"  Detected {len(faces)} face(s).")
+            
+        except Exception as e:
+            print(f"  ❌ Extraction Error: {e}")
+            faces = [] # Ensure faces is defined as an empty list on failure
+
+        # --- VISUALIZATION (Runs inside the loop if --show is provided) ---
+        if args.show and faces:
+            try:
+                img = cv2.imread(os.path.abspath(image_path))
+                
+                if img is None:
+                    print(f"  ⚠️ Visualization Error: Could not load image for drawing.")
+                else:
+                    for i, f in enumerate(faces):
+                        area = f['facial_area']
+                        x, y, w, h = area['x'], area['y'], area['w'], area['h']
+                        
+                        # Draw green rectangle (0, 255, 0)
+                        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        
+                        # ADDED: Draw Face Number Label
+                        label = f"Face {i+1}"
+                        cv2.putText(img, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                    
+                    cv2.setWindowTitle('Detected Faces', f'Batch Image {processed_count}: {filename} (Press Q to quit batch)')
+                    cv2.imshow('Detected Faces', img)
+                    
+                    key = cv2.waitKey(0) & 0xFF 
+                    cv2.destroyAllWindows()
+                    
+                    if key == ord('q'): # Check if the key pressed was 'q'
+                        print("\n🛑 Visualization stopped by user. Aborting batch process.")
+                        sys.exit(0) # Exit the entire script
+
+            except Exception as e:
+                print(f"  ❌ Visualization/OpenCV Error: {e}")
+                
+        
+        # --- 4.2. FACE RECOGNITION (Find Identity) ---
         try:
             dfs = DeepFace.find(
                 img_path=image_path,
@@ -122,6 +174,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                             match_identity = df_result['identity'].iloc[0].split(os.sep)[-2]
                             distance = df_result['distance'].iloc[0]
                             
+                            # MODIFIED PRINT: Show the face number that matches the visualization
                             print(f"    - Face {i+1} Match: **{match_identity}** (Distance: {distance:.4f})")
                         else:
                             print(f"    - Face {i+1} Match: **No match found**.")
@@ -131,7 +184,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         except Exception as e:
             print(f"  ❌ Recognition Error: {e}")
 
-        # --- 4.2. FACIAL ATTRIBUTE ANALYSIS ---
+        # --- 4.3. FACIAL ATTRIBUTE ANALYSIS ---
         try:
             analysis_results = DeepFace.analyze(
                 img_path=image_path,
@@ -145,6 +198,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 print(f"  🔬 Found {len(analysis_results)} face(s) for analysis.")
                 
                 for i, result in enumerate(analysis_results):
+                    # MODIFIED PRINT: Show the face number that matches the visualization
                     print(f"    - Face {i+1} Analysis:")
                     print(f"      Age: {result['age']}, Gender: {result['dominant_gender']}")
                     print(f"      Emotion: {result['dominant_emotion']}, Race: {result['dominant_race']}")
@@ -164,7 +218,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
         except Exception as e:
             print(f"  ❌ Analysis Error: {e}")
 
-        # --- 4.3. FACE EMBEDDING (Vector Generation) ---
+        # --- 4.4. FACE EMBEDDING (Vector Generation) ---
         try:
             embeddings = DeepFace.represent(
                 img_path=image_path,
@@ -175,8 +229,11 @@ for filename in os.listdir(TEST_FOLDER_PATH):
             )
             
             if embeddings:
-                embedding_vector = embeddings[0]['embedding']
+                # MODIFIED: Print embedding length for ALL faces if available, but only save the first one
+                print(f"  Vector embeddings generated for {len(embeddings)} face(s).")
                 
+                # Save the first embedding (index 0)
+                embedding_vector = embeddings[0]['embedding']
                 serializable_data = embeddings[0].copy()
                 
                 if isinstance(embedding_vector, np.ndarray):
@@ -184,13 +241,11 @@ for filename in os.listdir(TEST_FOLDER_PATH):
                 else:
                     serializable_data['embedding'] = embedding_vector
 
-                print(f"  Embedding vector length (First Face): {len(serializable_data['embedding'])}")
-
                 os.makedirs("outputs/embeddings", exist_ok=True)
-                output_filename = os.path.splitext(filename)[0] + "_embedding.json"
+                output_filename = os.path.splitext(filename)[0] + "_embedding_face1.json"
                 with open(os.path.join("outputs/embeddings", output_filename), "w") as f:
                     json.dump(serializable_data, f, indent=4)
-                print(f"  📁 Saved embedding to outputs/embeddings/{output_filename}")
+                print(f"  📁 Saved embedding for Face 1 to outputs/embeddings/{output_filename}")
             else:
                  print("  ⚠️ No face found to generate embedding.")
 
@@ -199,41 +254,7 @@ for filename in os.listdir(TEST_FOLDER_PATH):
 
 
 # ---------------------------
-# 5. FACE EXTRACTION & VISUALIZATION
+# 5. FINAL CLEANUP
 # ---------------------------
-print(f"\n--- 3. FACE EXTRACTION & VISUALIZATION ---")
-img_list = [f for f in os.listdir(TEST_FOLDER_PATH) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-img_to_show = args.img_a if args.img_a and os.path.isfile(args.img_a) else \
-              (os.path.join(TEST_FOLDER_PATH, img_list[0]) if img_list else None)
-
-if args.show and img_to_show and os.path.isfile(img_to_show):
-    try:
-        faces = DeepFace.extract_faces(
-            img_path=img_to_show,
-            detector_backend=args.detector,
-            align=True,
-            anti_spoofing=True
-        )
-
-        print(f"Detected {len(faces)} face(s) in {img_to_show} for visualization.")
-
-        img = cv2.imread(os.path.abspath(img_to_show))
-        
-        if img is None:
-            print(f"Visualization Error: Could not load image for drawing. Check file integrity.")
-        else:
-            for f in faces:
-                area = f['facial_area']
-                x, y, w, h = area['x'], area['y'], area['w'], area['h']
-                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            
-            cv2.imshow(f"Detected Faces in {os.path.basename(img_to_show)} (Press 'q' to close)", img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
-    except Exception as e:
-        print(f"Extraction/Visualization Error: {e}")
-else:
-    print("ℹ️ Visualization skipped: Pass --show argument to enable the display, or ensure test_images folder has files.")
-
+cv2.destroyAllWindows() 
 print("\n✅ All tasks completed successfully!")
