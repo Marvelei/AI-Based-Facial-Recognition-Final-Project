@@ -1,0 +1,12 @@
+# Virtual Environment
+venv/
+.venv/
+# DeepFace cache and large models
+*.pkl
+# DeepFace Output Files (Generated Data) <--- NEW SECTION
+outputs/
+# Python compiled files
+__pycache__/
+*.pyc
+# Operating System files
+.DS_Store
