@@ -1,12 +1,28 @@
-# Virtual Environment
-venv/
-.venv/
-# DeepFace cache and large models
-*.pkl
-# DeepFace Output Files (Generated Data) <--- NEW SECTION
-outputs/
-# Python compiled files
+# Personal images
+baseline_db/
+masked_db/
+
+# Cache
 __pycache__/
 *.pyc
-# Operating System files
+
+# Local environment
+venv/
+tf-gpu/
+.env
+
+# OS files
 .DS_Store
+
+# InsightFace auto downloads
+/home/marvel/.insightface/
+
+# JetBrains or VSCode settings
+.idea/
+.vscode/
+
+# Temporary outputs
+tmp/
+outputs/
+*.jpg
+*.png
