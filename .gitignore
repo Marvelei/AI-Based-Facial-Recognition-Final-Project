@@ -2,6 +2,9 @@
 baseline_db/
 masked_db/
 
+models/*.onnx
+models/*.pt
+
 # Cache
 __pycache__/
 *.pyc
