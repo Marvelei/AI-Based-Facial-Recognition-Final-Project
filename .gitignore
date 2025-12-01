@@ -1,31 +1,45 @@
-# Personal images
-baseline_db/
-masked_db/
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
+# Virtual environments
+venv/
+.env/
+
+# Model weights
 models/*.onnx
 models/*.pt
 
-# Cache
-__pycache__/
-*.pyc
+# ONNX Runtime build
+onnxruntime/
 
-# Local environment
-venv/
-tf-gpu/
-.env
+# Baseline & drift data (generated)
+initial_assets/
+drift_assets/
+drift_data/
+drift_samples/
+adaptive_data/
 
-# OS files
+# Logs & CSVs
+logs/
+monitoring_log.csv
+*.csv
+
+# Output images/videos
+outputs/
+
+# Windows/Mac junk
+Thumbs.db
 .DS_Store
 
-# InsightFace auto downloads
-/home/marvel/.insightface/
+# Test images (optional)
+test_images/
 
-# JetBrains or VSCode settings
-.idea/
-.vscode/
+# Large installers
+*.deb
 
-# Temporary outputs
-tmp/
-outputs/
-*.jpg
-*.png
+# Temporary files
+*.tmp
+*.bak
+rmdir
