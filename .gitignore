@@ -1,4 +1,4 @@
-# Python
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -7,39 +7,25 @@ __pycache__/
 venv/
 .env/
 
-# Model weights
-models/*.onnx
-models/*.pt
-
-# ONNX Runtime build
-onnxruntime/
-
-# Baseline & drift data (generated)
-initial_assets/
+# Ignore drift windows (temporary)
 drift_assets/
-drift_data/
-drift_samples/
-adaptive_data/
 
-# Logs & CSVs
-logs/
-monitoring_log.csv
-*.csv
-
-# Output images/videos
+# Ignore output images/videos
 outputs/
+*.png
+*.jpg
+*.jpeg
+*.mp4
 
-# Windows/Mac junk
+# Ignore OS trash
 Thumbs.db
 .DS_Store
 
-# Test images (optional)
-test_images/
-
-# Large installers
-*.deb
-
-# Temporary files
+# Ignore temp files
 *.tmp
 *.bak
-rmdir
+
+# Allow baseline & initial assets (DO NOT ignore)
+# Allow models (DO NOT ignore)
+# Allow logs (DO NOT ignore)
+# Allow CSV (DO NOT ignore)

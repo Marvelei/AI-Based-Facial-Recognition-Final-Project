@@ -1,13 +1,13 @@
-# phase3_retrain_person.py
-
 import argparse
-import os
-
 import numpy as np
 import pandas as pd
+import os
 import joblib
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import LabelEncoder
+
+from logs.logging_utils import log_event, bump_model_version
+# ---------------------------------------------------------------------
 
 BASELINE_CSV = "initial_assets/baseline_embeddings.csv"
 KNN_PATH = "initial_assets/initial_knn_model.pkl"
@@ -16,72 +16,66 @@ CENTROIDS_PATH = "initial_assets/centroids.pkl"
 DRIFT_DIR = "drift_assets"
 
 
-def load_numeric_embeddings(df: pd.DataFrame):
-    """Return only numeric embedding columns as a matrix."""
-    numeric_df = df.select_dtypes(include=[np.number])
-    return numeric_df.values
+def load_numeric(df):
+    return df.select_dtypes(include=[np.number]).values
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--person", required=True, help="Person to retrain")
+    parser.add_argument("--person", required=True)
     args = parser.parse_args()
     person = args.person
 
-    print(f"[PHASE 3] Starting retrain for: {person}")
+    log_event("phase3", "RETRAIN_STARTED", subject=person)
 
     drift_path = os.path.join(DRIFT_DIR, f"{person}_drift_embeddings.npy")
     if not os.path.exists(drift_path):
-        print(f"[ERROR] No drift embeddings found for {person} at {drift_path}")
+        log_event("phase3", "RETRAIN_FAILED", subject=person,
+                  extra_info="no drift file")
         return
 
     drift_embs = np.load(drift_path)
     if drift_embs.ndim == 1:
         drift_embs = drift_embs.reshape(1, -1)
 
-    print(f"[INFO] Loaded {len(drift_embs)} drift embeddings for '{person}'")
-
-    if not os.path.exists(BASELINE_CSV):
-        print(f"[ERROR] Baseline CSV not found at {BASELINE_CSV}")
-        return
-
-    # ------------ LOAD OLD BASELINE CSV ------------
     df = pd.read_csv(BASELINE_CSV)
+    X = load_numeric(df)
+    y = df["label"].values
 
-    emb_matrix = load_numeric_embeddings(df)
-    labels = df["label"].values
+    X = np.vstack([X, drift_embs])
+    y = np.concatenate([y, [person] * len(drift_embs)])
 
-    # ------------ APPEND DRIFT EMBEDDINGS ------------
-    emb_matrix = np.vstack([emb_matrix, drift_embs])
-    labels = np.concatenate([labels, [person] * len(drift_embs)])
+    updated = pd.DataFrame(X)
+    updated["label"] = y
+    updated.to_csv(BASELINE_CSV, index=False)
 
-    # ------------ SAVE NEW BASELINE CSV ------------
-    updated_df = pd.DataFrame(emb_matrix)
-    updated_df["label"] = labels
-    updated_df.to_csv(BASELINE_CSV, index=False)
-    print(f"[SAVE] Updated baseline CSV saved at {BASELINE_CSV}")
-
-    # ------------ RETRAIN KNN + LABEL ENCODER ------------
+    # retrain knn
     le = LabelEncoder()
-    y_encoded = le.fit_transform(labels)
+    y_enc = le.fit_transform(y)
 
     knn = KNeighborsClassifier(n_neighbors=3)
-    knn.fit(emb_matrix, y_encoded)
+    knn.fit(X, y_enc)
 
     joblib.dump(knn, KNN_PATH)
     joblib.dump(le, LE_PATH)
-    print(f"[SAVE] Updated KNN model and LabelEncoder saved.")
 
-    # ------------ RECOMPUTE CENTROIDS ------------
+    # recompute centroids
     centroids = {}
-    for p_name in updated_df["label"].unique():
-        embs_p = updated_df[updated_df["label"] == p_name].iloc[:, :-1].values
-        centroids[p_name] = np.mean(embs_p, axis=0)
+    for p in updated["label"].unique():
+        embs = updated[updated["label"] == p].iloc[:, :-1].values
+        centroids[p] = np.mean(embs, axis=0)
 
     joblib.dump(centroids, CENTROIDS_PATH)
-    print(f"[SAVE] Updated centroids saved at {CENTROIDS_PATH}")
 
-    print(f"[DONE] Phase 3 retraining finished for '{person}'")
+    new_version = bump_model_version()
+
+    log_event(
+        "phase3",
+        "RETRAIN_SUCCESS",
+        subject=person,
+        model_version=new_version,
+        extra_info=f"{len(drift_embs)} drift samples"
+    )
 
 
 if __name__ == "__main__":
