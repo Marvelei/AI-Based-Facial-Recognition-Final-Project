@@ -6,6 +6,13 @@
 	"image": "mcr.microsoft.com/devcontainers/python:2-3.10-bookworm",
 	"features": {
 		"ghcr.io/devcontainers-extra/features/coverage-py:2": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"Docter60.vscode-terminal-for-ubuntu"
+			]
+		}
 	}
 
 	// Features to add to the dev container. More info: https://containers.dev/features.

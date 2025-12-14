@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Monitoring - Face Recognition System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }
+        .monitor-container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .nav-menu {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .nav-menu a {
+            margin-right: 20px;
+            text-decoration: none;
+            color: #2196F3;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        .nav-menu a:hover {
+            color: #0d47a1;
+        }
+        h1 {
+            color: #1a237e;
+            margin-bottom: 20px;
+        }
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .btn-start {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-start:hover {
+            background: #45a049;
+        }
+        .btn-stop {
+            background: #f44336;
+            color: white;
+        }
+        .btn-stop:hover {
+            background: #da190b;
+        }
+        .video-container {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .video-feed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a237e;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .status-online {
+            background: #4CAF50;
+        }
+        .status-offline {
+            background: #f44336;
+        }
+        .status-drift {
+            background: #ff9800;
+        }
+        .status-ok {
+            background: #4CAF50;
+        }
+        .drift-status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            font-weight: 500;
+        }
+        .drift-status.ok {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .drift-status.drift {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .current-detection {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .current-detection h2 {
+            color: white;
+            margin-bottom: 10px;
+        }
+        .detection-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .person-name {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .confidence {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="monitor-container">
+        <div class="nav-menu">
+            <a href="/">Dashboard</a>
+            <a href="/monitor">Monitor</a>
+            <a href="/logs">Logs</a>
+            <a href="/register">Register</a>
+        </div>
+        
+        <h1>🎥 Real-Time Face Monitoring</h1>
+        
+        <div class="control-panel">
+            <h2>System Controls</h2>
+            <div style="margin-top: 10px;">
+                <span class="status-indicator" id="monitoring-status"></span>
+                <span id="monitoring-text">Checking status...</span>
+            </div>
+            <div class="control-buttons">
+                <button class="btn btn-start" onclick="startMonitoring()">▶ Start Monitoring</button>
+                <button class="btn btn-stop" onclick="stopMonitoring()">⏹ Stop Monitoring</button>
+            </div>
+        </div>
+        
+        <div class="current-detection" id="current-detection">
+            <h2>Current Detection</h2>
+            <div class="detection-info">
+                <div>
+                    <div class="person-name" id="person-name">No face detected</div>
+                    <div class="confidence" id="confidence">--</div>
+                </div>
+                <div>
+                    <span class="drift-status ok" id="drift-status">OK</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="video-container">
+            <img src="{{ url_for('video_feed') }}" class="video-feed" alt="Live Video Feed">
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Camera Status</div>
+                <div class="stat-value">
+                    <span class="status-indicator" id="camera-status"></span>
+                    <span id="camera-text">--</span>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-label">Total Detections</div>
+                <div class="stat-value" id="total-detections">0</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-label">Faces Detected</div>
+                <div class="stat-value" id="total-faces">0</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-label">Last Update</div>
+                <div class="stat-value" id="last-update" style="font-size: 14px;">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function startMonitoring() {
+            fetch('/api/control/start', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Monitoring started successfully!');
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to start monitoring');
+                });
+        }
+
+        function stopMonitoring() {
+            fetch('/api/control/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Monitoring stopped successfully!');
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to stop monitoring');
+                });
+        }
+
+        function checkStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const monitoringIndicator = document.getElementById('monitoring-status');
+                    const monitoringText = document.getElementById('monitoring-text');
+                    const cameraIndicator = document.getElementById('camera-status');
+                    const cameraText = document.getElementById('camera-text');
+                    
+                    if (data.success && data.monitoring_active) {
+                        monitoringIndicator.className = 'status-indicator status-online';
+                        monitoringText.textContent = 'Monitoring Active';
+                    } else {
+                        monitoringIndicator.className = 'status-indicator status-offline';
+                        monitoringText.textContent = 'Monitoring Inactive';
+                    }
+                    
+                    if (data.camera_connected) {
+                        cameraIndicator.className = 'status-indicator status-online';
+                        cameraText.textContent = 'Connected';
+                    } else {
+                        cameraIndicator.className = 'status-indicator status-offline';
+                        cameraText.textContent = 'Disconnected';
+                    }
+                })
+                .catch(error => console.error('Error checking status:', error));
+        }
+
+        function fetchStats() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const stats = data.stats;
+                        
+                        document.getElementById('total-detections').textContent = stats.total_detections || 0;
+                        document.getElementById('total-faces').textContent = stats.total_faces || 0;
+                        
+                        if (stats.current_person && stats.current_person !== 'Unknown') {
+                            document.getElementById('person-name').textContent = stats.current_person;
+                            document.getElementById('confidence').textContent = 
+                                `Confidence: ${(stats.confidence * 100).toFixed(1)}%`;
+                        } else {
+                            document.getElementById('person-name').textContent = 'No face detected';
+                            document.getElementById('confidence').textContent = '--';
+                        }
+                        
+                        const driftStatus = document.getElementById('drift-status');
+                        if (stats.psi_status === 'DRIFT') {
+                            driftStatus.className = 'drift-status drift';
+                            driftStatus.textContent = '⚠ DRIFT DETECTED';
+                        } else {
+                            driftStatus.className = 'drift-status ok';
+                            driftStatus.textContent = '✓ OK';
+                        }
+                        
+                        if (stats.last_detection_time) {
+                            const date = new Date(stats.last_detection_time);
+                            document.getElementById('last-update').textContent = date.toLocaleTimeString();
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching stats:', error));
+        }
+
+        // Update every 2 seconds
+        checkStatus();
+        fetchStats();
+        setInterval(checkStatus, 2000);
+        setInterval(fetchStats, 1000);
+    </script>
+</body>
+</html>
